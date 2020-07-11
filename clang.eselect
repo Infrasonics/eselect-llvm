@@ -1,0 +1,146 @@
+# -*-eselect-*-  vim: ft=eselect
+# Copyright 2005-2020 Gentoo Authors
+# Distributed under the terms of the GNU GPL version 2 or later
+
+DESCRIPTION="Manage clang symlink"
+MAINTAINER="Infrasonics <infrasonics@gmx.de>"
+SVN_DATE='$Date: $'
+VERSION=$(svn_date_to_version "${SVN_DATE}" )
+
+
+find_targets() {
+	local llvmdir=$(find /usr/lib /usr/lib64 \
+			-type d \
+			\( -path "/usr/lib*/llvm" -a \! -path "*/debug/*" \) \
+			-prune)
+	local rt
+	for t in ${llvmdir}/*/bin/${1:-clang}; do
+		[[ -L ${t} ]] || continue
+		rt=$(canonicalise ${t})
+		[[ -x ${rt} ]] || continue
+		echo ${rt}
+	done
+}
+
+check_target() {
+	local target=${1} targets
+	targets=( $(find_targets ) )
+
+	# number from the list
+	if is_number ${target} && [[ ${target} -ge 1 ]] ; then
+		if [[ ${target} -gt ${#targets[@]} ]] ; then
+			target="invalid"
+		elif [[ -e "${targets[$(( ${target} - 1 ))]}" ]] ; then
+			target=$(basename ${targets[$((${target} - 1 ))]} )
+		else
+			write_warning_msg ${targets[$((${target} - 1 ))]}
+			target="invalid"
+		fi
+	else
+	[[ -e "${EROOT}/usr/bin/${target}" ]] || \
+			target="invalid"
+	fi
+
+	echo ${target}
+}
+
+remove_symlinks() {
+	rm -f /usr/bin/clang
+	rm -f /usr/bin/clang++
+}
+
+create_symlinks() {
+	local target=${1} version
+	local targets=( $(find_targets) )
+	local tpath=""
+	local version=${target##*clang}
+
+	# find correct full target path as llvm usually is not in $PATH
+	for (( i = 0; i < ${#targets[@]}; i++ )) ; do
+		if [[ $(basename ${targets[i]}) = ${target} ]] ; then
+			tpath=$(dirname ${targets[i]})
+		fi
+	done
+
+	local path="${EROOT}/usr/bin"
+	for f in clang clang++; do
+		ln -s "${tpath}/${f}" "${path}/${f}" || \
+			die -q "Could not set ${f} symlink"
+	done
+
+	write_list_start "Successfully switched to profile:"
+	write_kv_list_entry "${target}" ""
+}
+
+### list action
+describe_list() {
+	echo "List all installed version of clang"
+}
+
+do_list() {
+	local targets=( $(find_targets) )
+
+	for (( i = 0; i < ${#targets[@]}; i++ )) ; do
+		line=$(basename "${targets[i]}")
+
+		# find out the current version
+		if [[ ${targets[i]} = $(canonicalise /usr/bin/clang) ]] ; then
+			targets[i]=$(highlight_marker "${line}")
+		else
+			targets[i]=${line}
+		fi
+	done
+
+	write_numbered_list -m "(none found)" "${targets[@]}"
+}
+
+
+### set action ###
+describe_set() {
+	echo "Switches to a clang profile."
+}
+
+describe_set_options() {
+	echo "target : Target name or number (from 'list' action)"
+}
+
+describe_set_parameters() {
+	echo "<target>"
+}
+
+do_set() {
+	[[ -z ${@} ]] && die -q "Parameter expected."
+
+	local target=$(check_target ${1})
+
+	[[ ${target} = "invalid" ]] && die -q "Can't use that profile. No suitable Ruby interpreter found."
+
+	remove_symlinks || \
+		die -q "Could not remove symlinks"
+
+	create_symlinks ${target}
+}
+
+
+### show action
+
+describe_show() {
+	echo "Print the currently active clang version"
+}
+
+do_show() {
+	[[ -z "${@}" ]] || die -q "This function does not expect any arguments"
+
+	local version=""
+
+	if [[ -L "${EROOT}/usr/bin/clang" ]] ; then
+		version=$(basename $(canonicalise ${EROOT}/usr/bin/clang) )
+	else
+		write_kv_list_entry "(none)"
+		return 1
+	fi
+	write_list_start "Current clang version:"
+	write_kv_list_entry ${version} ""
+}
+
+# vim: ts=4 sw=4 noet fdm=marker
