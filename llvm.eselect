@@ -1,0 +1,178 @@
+# Copyright 1999-2020 Gentoo Foundation
+# Distributed under the terms of the GNU General Public License v2
+# $Id: $
+
+DESCRIPTION="Manage multiple installed llvm versions"
+MAINTAINER="Fabian Dreer <infrasonics@gmx.de>"
+VERSION=20200712
+
+inherit config
+
+# env.d file with higher priority to get the the selected version earlier into
+# PATH
+ENVDLLVMFILE="${EROOT}/etc/env.d/59llvm"
+
+# convert from an id (e.g. llvm-10) to its path set in its env.d file
+id2path() {
+	local id=$(echo "${1}" | tr '-' '/')
+	local paths=$(find_paths)
+	for p in ${paths[@]}; do
+		if [[ "${p}" =~ "${id}" ]];then
+			echo "${p}"
+			break
+		else continue
+		fi
+	done
+}
+
+# convert an llvm path to an identifier for display
+path2id() {
+	echo $(echo "${1}" | grep -o "llvm/[0-9]\+" | tr '/' '-')
+}
+
+# List all available llvm directories
+find_paths() {
+	local llvms=$(for p in "${EROOT}"/etc/env.d/60llvm*; do
+		load_config "${p}" "PATH"
+	done)
+
+	echo ${llvms[@]}
+}
+
+# Find the file containing the given PATH value
+find_file_by_path() {
+	wanted="${1}"
+	for file in "${EROOT}"/etc/env.d/60llvm*; do
+		path=$(load_config "${file}" "PATH")
+		if [[ "${1}" = "${path}" ]];then
+			echo "${file}"
+			break
+		else continue
+		fi
+	done
+}
+
+find_targets() {
+	# There should be no need to canonicalise links from env.d entries.
+	# But make a nicer target name.
+	for t in $(find_paths); do
+		echo $(path2id ${t})
+	done
+}
+
+check_target() {
+	local target=${1} targets
+	targets=( $(find_targets) )
+
+	# number from the list
+	if is_number ${target} && [[ ${target} -ge 1 ]] ; then
+		if [[ ${target} -gt ${#targets[@]} ]] ; then
+			target="invalid"
+		elif [[ -d $( id2path "${targets[$(( ${target} - 1 ))]}") ]] ; then
+			target="$(id2path ${targets[$((${target} - 1 ))]} )"
+		else
+			write_warning_msg "${targets[$((${target} - 1 ))]}"
+			target="invalid"
+		fi
+	elif [[ -d "$(id2path ${target})" ]]; then
+			target="$(id2path ${target})"
+	else
+			target="invalid"
+	fi
+
+	echo "${target}"
+}
+
+# Takes a full target path, finds the corresponding llvm file in env.d and
+# creates a link to it in order to overwrite the usage order in PATH
+update_env() {
+	local target="${1}"
+	local file="$(find_file_by_path ${target})"
+
+	# In case it's not a symlink, save the file and overwrite
+	if [[ ! -L ${ENVDLLVMFILE} ]];then
+		cp "${ENVDLLVMFILE}" "${ENVDLLVMFILE}.bak"
+		write_warning_msg "Unexpected file \"${ENVDLLVMFILE}\""\
+			"has been moved to \"${ENVDLLVMFILE}.bak\""
+	fi
+	ln -sf "${file}" "${ENVDLLVMFILE}"
+}
+
+
+### list action
+describe_list() {
+	echo "List all installed versions of llvm"
+}
+
+do_list() {
+	local targets=( $(find_targets) )
+	local paths=( $(find_paths) )
+	local cur=$(load_config ${ENVDLLVMFILE} "PATH")
+
+	# This should not happen
+	[[ ${#targets[@]} -eq ${#paths[@]} ]] \
+		|| die -q "#targets != #possible paths; this is possibly a bug"
+
+	for (( i = 0; i < ${#targets[@]}; i++ )) ; do
+		line="${targets[i]}"
+
+		# find out the current version
+		if [[ "${cur}" = "$(id2path ${targets[i]})" ]] ; then
+			targets[i]=$(highlight_marker "${line}")
+		else
+			targets[i]=${line}
+		fi
+	done
+
+	write_numbered_list -m "(none found)" "${targets[@]}"
+}
+
+
+### set action ###
+describe_set() {
+	echo "Switches to an llvm profile"
+}
+
+describe_set_options() {
+	echo "target : Target name or number (from 'list' action)"
+}
+
+describe_set_parameters() {
+	echo "<target>"
+}
+
+do_set() {
+	[[ -z ${@} ]] && die -q "Parameter expected."
+
+	local target=$(check_target ${1})
+
+	[[ ${target} = "invalid" ]] \
+		&& die -q "Can't use that profile. No suitable LLVM version found."
+
+	update_env "${target}" || \
+		die -q "Could not update env file"
+}
+
+
+### show action
+describe_show() {
+	echo "Print the currently active llvm version"
+}
+
+
+do_show() {
+	[[ -z "${@}" ]] || die -q "This function does not expect any arguments"
+
+	local version=""
+
+	if [[ -L "${ENVDLLVMFILE}" ]] ; then
+		version=$(path2id $(load_config "${ENVDLLVMFILE}" "PATH") )
+	else
+		write_kv_list_entry "(none)"
+		return 1
+	fi
+	write_list_start "Current llvm version:"
+	write_kv_list_entry ${version} ""
+}
+
+# vim: ts=4 sw=4 noet fdm=marker

@@ -1,7 +1,7 @@
-# eselect-clang
+# eselect-llvm
 
-A slightly modified version of one of the usual modules to manage the
-`clang` and `clang++` symlinks in Gentoo's `eselect`-system.
+A module for Gentoo's `eselect` configuration system to manage multiple
+installed versions of `llvm` via an /etc/env.d file.
 
 ## Installation
 Copy the file to `/usr/share/eselect/modules`.
