@@ -10,7 +10,7 @@ inherit config
 
 # env.d file with higher priority to get the the selected version earlier into
 # PATH
-ENVDLLVMFILE="${EROOT}/etc/env.d/59llvm"
+ENVDLLVMFILE="${EROOT}/etc/env.d/09llvm"
 
 # convert from an id (e.g. llvm-10) to its path set in its env.d file
 id2path() {
@@ -32,7 +32,7 @@ path2id() {
 
 # List all available llvm directories
 find_paths() {
-	local llvms=$(for p in "${EROOT}"/etc/env.d/60llvm*; do
+	local llvms=$(for p in "${EROOT}"/etc/env.d/?0llvm*; do
 		load_config "${p}" "PATH"
 	done)
 
@@ -42,7 +42,7 @@ find_paths() {
 # Find the file containing the given PATH value
 find_file_by_path() {
 	wanted="${1}"
-	for file in "${EROOT}"/etc/env.d/60llvm*; do
+	for file in "${EROOT}"/etc/env.d/?0llvm*; do
 		path=$(load_config "${file}" "PATH")
 		if [[ "${1}" = "${path}" ]];then
 			echo "${file}"
