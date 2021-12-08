@@ -146,6 +146,8 @@ do_set() {
 
 	local target=$(check_target ${1})
 
+	[[ -f "$ENVDLLVMFILE" ]] || touch "$ENVDLLVMFILE"
+
 	[[ ${target} = "invalid" ]] \
 		&& die -q "Can't use that profile. No suitable LLVM version found."
 
