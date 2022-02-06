@@ -1,23 +1,25 @@
-# Copyright 1999-2020 Gentoo Foundation
+# Copyright 2020-2022 Fabian Dreer
 # Distributed under the terms of the GNU General Public License v2
 # $Id: $
 
 DESCRIPTION="Manage multiple installed llvm versions"
 MAINTAINER="Fabian Dreer <infrasonics@gmx.de>"
-VERSION=20200712
+VERSION=20220206
 
 inherit config
 
 # env.d file with higher priority to get the the selected version earlier into
 # PATH
+#
+# sys-devel/llvm:9 installs the file /etc/env.d/10llvm-9990
 ENVDLLVMFILE="${EROOT}/etc/env.d/09llvm"
 
 # convert from an id (e.g. llvm-10) to its path set in its env.d file
 id2path() {
-	local id=$(echo "${1}" | tr '-' '/')
-	local paths=$(find_paths)
-	for p in ${paths[@]}; do
-		if [[ "${p}" =~ "${id}" ]];then
+	local id="${1/-//}"
+	local paths=( $(find_paths) )
+	for p in "${paths[@]}"; do
+		if [[ "${p}" == *"${id}"* ]];then
 			echo "${p}"
 			break
 		else continue
@@ -27,21 +29,23 @@ id2path() {
 
 # convert an llvm path to an identifier for display
 path2id() {
-	echo $(echo "${1}" | grep -o "llvm/[0-9]\+" | tr '/' '-')
+	# Use a greedy match to only keep the last one in case EROOT contains "llvm/X"
+	# Use `-E` for POSIX portability
+	echo $(echo "${1}" | sed -Ee 's/^.*(llvm\/[[:digit:]]+)\/.*/\1/' | tr '/' '-')
 }
 
 # List all available llvm directories
 find_paths() {
-	local llvms=$(for p in "${EROOT}"/etc/env.d/?0llvm*; do
+	local llvms=( $(for p in "${EROOT}"/etc/env.d/?0llvm*; do
 		load_config "${p}" "PATH"
-	done)
+	done) )
 
-	echo ${llvms[@]}
+	echo "${llvms[*]}"
 }
 
 # Find the file containing the given PATH value
 find_file_by_path() {
-	wanted="${1}"
+	local wanted="${1}"
 	for file in "${EROOT}"/etc/env.d/?0llvm*; do
 		path=$(load_config "${file}" "PATH")
 		if [[ "${1}" = "${path}" ]];then
@@ -56,7 +60,7 @@ find_targets() {
 	# There should be no need to canonicalise links from env.d entries.
 	# But make a nicer target name.
 	for t in $(find_paths); do
-		echo $(path2id ${t})
+		echo $(path2id "${t}")
 	done
 }
 
@@ -110,8 +114,9 @@ do_list() {
 	local cur=$(load_config ${ENVDLLVMFILE} "PATH")
 
 	# This should not happen
-	[[ ${#targets[@]} -eq ${#paths[@]} ]] \
-		|| die -q "#targets != #possible paths; this is possibly a bug"
+	if [[ ${#targets[@]} -ne ${#paths[@]} ]] ; then
+		die -q "#targets != #possible paths; this is possibly a bug"
+	fi
 
 	for (( i = 0; i < ${#targets[@]}; i++ )) ; do
 		line="${targets[i]}"
@@ -146,13 +151,15 @@ do_set() {
 
 	local target=$(check_target ${1})
 
-	[[ -f "$ENVDLLVMFILE" ]] || touch "$ENVDLLVMFILE"
+	if [[ ! -f "$ENVDLLVMFILE" ]] ; then
+		touch "$ENVDLLVMFILE"
+	fi
 
-	[[ ${target} = "invalid" ]] \
-		&& die -q "Can't use that profile. No suitable LLVM version found."
+	if [[ ${target} = "invalid" ]] ; then
+		die -q "Can't use that profile. No suitable LLVM version found."
+	fi
 
-	update_env "${target}" || \
-		die -q "Could not update env file"
+	update_env "${target}" || die -q "Could not update env file"
 }
 
 
@@ -163,7 +170,9 @@ describe_show() {
 
 
 do_show() {
-	[[ -z "${@}" ]] || die -q "This function does not expect any arguments"
+	if [[ -n "${@}" ]] ; then
+		die -q "This function does not expect any arguments"
+	fi
 
 	local version=""
 
